@@ -51,10 +51,15 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
     Default: choose-key
 
-Mappings:
-  RegionToAmazonAMI:
-    us-east-1:
-      HVM64: ami-0be2609ba883822ec
+  customAMI:
+    Description: Ingrea el codigo de la AMi que deseas Instalar
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: ami-0be2609ba883822ec
+
+# Mappings:
+#   RegionToAmazonAMI:
+#     us-east-1:
+#       HVM64: ami-0be2609ba883822ec
 
 Resources:
   VPC:
@@ -313,10 +318,11 @@ Resources:
   CustomInstance1:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap
-        - RegionToAmazonAMI
-        - !Ref AWS::Region
-        - HVM64
+      # ImageId: !FindInMap
+      #   - RegionToAmazonAMI
+      #   - !Ref AWS::Region
+      #   - HVM64
+      ImageId: !Ref customAMI
       KeyName: !Ref SSHKeyName
       InstanceType: t2.micro
       # SecurityGroupIds:
@@ -333,10 +339,11 @@ Resources:
   CustomInstance2:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !FindInMap
-        - RegionToAmazonAMI
-        - !Ref AWS::Region
-        - HVM64
+      # ImageId: !FindInMap
+      #   - RegionToAmazonAMI
+      #   - !Ref AWS::Region
+      #   - HVM64
+      ImageId: !Ref customAMI
       KeyName: !Ref SSHKeyName
       InstanceType: t2.micro
       # SecurityGroupIds:
