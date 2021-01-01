@@ -53,7 +53,7 @@ Parameters:
 
   customAMI:
     Description: Ingrea el codigo de la AMi que deseas Instalar
-    Type: AWS::EC2::KeyPair::KeyName
+    Type: AWS::EC2::Image::Id
     Default: ami-0be2609ba883822ec
 
 # Mappings:
