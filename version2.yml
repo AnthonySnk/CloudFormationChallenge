@@ -1,0 +1,459 @@
+AWSTemplateFormatVersion: 2010-09-09
+# Description: This is a template with Using CloudFormation, create the following infrastructure in AWS -
+#   Create a custom VPC with three private subnets and three public subnets.
+#   Create an application load balancer to serve traffic web between two EC2 instances.
+#   You must use a custom AMI
+#   Deploy a VPN server to ssh from home to the EC2 instances.
+
+
+Parameters:
+  EnvironmentName:
+    Description: Ingresa el nombre del ambiente
+    Type: String
+
+  VpcCIDR:
+    Description: Ingresa el rango de IP para esta VPC
+    Type: String
+    Default: 10.192.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Ingresa el rango de IP para la subred publica en la primera zona de disponibilidad
+    Type: String
+    Default: 10.192.10.0/24
+
+  PublicSubnet2CIDR:
+    Description: Ingresa el rango de IP para la subred publica en la segunda zona de disponibilidad
+    Type: String
+    Default: 10.192.11.0/24
+
+  PublicSubnet3CIDR:
+    Description: Ingresa el rango de IP para la subred publica en la tercera zona de disponibilidad
+    Type: String
+    Default: 10.192.12.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Ingresa el rango de IP para la subred privada en la primera zona de disponibilidad
+    Type: String
+    Default: 10.192.20.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Ingresa el rango de IP para la subred privada en la segunda zona de disponibilidad
+    Type: String
+    Default: 10.192.21.0/24
+    
+  PrivateSubnet3CIDR:
+    Description: Ingresa el rango de IP para la subred privada en la tercera zona de disponibilidad
+    Type: String
+    Default: 10.192.22.0/24
+
+  SSHKeyName:
+    Description: Ingrese el nombre de la clave existente para el acceso SSH a la instancia de EC2.
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: choose-key
+
+Mappings:
+  RegionToAmazonAMI:
+    us-east-1:
+      HVM64: ami-0be2609ba883822ec
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-GTW
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PublicSubnet1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PublicSubnet2
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PublicSubnet3CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PublicSubnet3
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PrivateSubnet2
+  
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnet3CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-PrivateSubnet3
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  
+  # Tener en cuenta que la EIP se cobrara por no estar asociada a ninguna instancia
+  NatGateway3EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+  
+  NatGateway3:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway3EIP.AllocationId
+      SubnetId: !Ref PublicSubnet3
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-Public-Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+  
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-Private-Routes1
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-Private-Routes3
+
+  DefaultPrivateRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway3
+
+  PrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      SubnetId: !Ref PrivateSubnet3
+
+  # EC2 Security Group Allowing Port 22 and 80 from anywhere
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SSH and Port 80"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ELBSecurityGroup
+
+  # ELB Security Group allowing Port 80 from anywhere
+  ELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SSH and Port 80"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  #Customs AMI
+  CustomInstance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap
+        - RegionToAmazonAMI
+        - !Ref AWS::Region
+        - HVM64
+      KeyName: !Ref SSHKeyName
+      InstanceType: t2.micro
+      # SecurityGroupIds:
+      #   - !Ref EC2SecurityGroup
+      # DependsOn: VPC
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: "0"
+          GroupSet:
+            - !Ref EC2SecurityGroup
+          SubnetId: !Ref PublicSubnet1
+
+  CustomInstance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap
+        - RegionToAmazonAMI
+        - !Ref AWS::Region
+        - HVM64
+      KeyName: !Ref SSHKeyName
+      InstanceType: t2.micro
+      # SecurityGroupIds:
+      #   - !Ref EC2SecurityGroup
+      # DependsOn: VPC
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: "0"
+          GroupSet:
+            - !Ref EC2SecurityGroup
+          SubnetId: !Ref PublicSubnet2
+
+  # Target Group
+  EC2TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: "200"
+      Name: EC2TargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "20"
+      Targets:
+        - Id: !Ref CustomInstance1
+          Port: 80
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: EC2TargetGroup
+        - Key: Port
+          Value: 80
+
+  #ELB (ALB)
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref EC2TargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing # or internal
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        # - !Ref PublicSubnet3
+      SecurityGroups:
+        - !Ref ELBSecurityGroup
+Outputs:
+  VPC:
+    Description: Refencia de las VPC creadas
+    Value: !Ref VPC
+
+  PublicSubnets:
+    Description: Lista de las subredes publicas
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 , !Ref PublicSubnet3]]
+
+  PrivateSubnets:
+    Description: Lista de las subredes privadas
+    Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2,!Ref PrivateSubnet3 ]]
+
+  PublicSubnet1:
+    Description: Subred publica en 1era zona de disponibilidad
+    Value: !Ref PublicSubnet1
+
+  PublicSubnet2:
+    Description: Subred publica en 2da zona de disponibilidad
+    Value: !Ref PublicSubnet2
+  
+  PublicSubnet3:
+    Description: Subred publica en 2da zona de disponibilidad
+    Value: !Ref PublicSubnet3
+
+  PrivateSubnet1:
+    Description: Subred privada en 1ra zona de disponibilidad
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2:
+    Description: Subred privada en 2da zona de disponibilidad
+    Value: !Ref PrivateSubnet2
+  
+  PrivateSubnet3:
+    Description: Subred privada en 2da zona de disponibilidad
+    Value: !Ref PrivateSubnet3
+
+  # NoIngressSecurityGroup:
+  #   Description: Security group with no ingress rule
+  #   Value: !Ref NoIngressSecurityGroup
+
+  ALBHostName:
+    Description: Aplicacion Load Balancer Hostname
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  EC2Instance:
+    Description: Intancia 1 de EC2
+    Value: !Ref CustomInstance1
+
+  EC2Instance2:
+    Description: Intancia 2 de EC2
+    Value: !Ref CustomInstance2
+
+  EC2TargetGroup:
+    Description: 'EC2 Grupo'
+    Value: !Ref EC2TargetGroup
+
+  ApplicationLoadBalancer:
+    Description: 'Aplicacion Load Balancer'
+    Value: !Ref ApplicationLoadBalancer
