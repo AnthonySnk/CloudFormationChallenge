@@ -4,7 +4,8 @@ AWSTemplateFormatVersion: 2010-09-09
 #   Create an application load balancer to serve traffic web between two EC2 instances.
 #   You must use a custom AMI
 #   Deploy a VPN server to ssh from home to the EC2 instances.
-
+# To access VPN use password  htpps://public-ip:943/admin
+# Befores change user and password with ssh with commands > passwd openvpn
 
 Parameters:
   EnvironmentName:
@@ -40,7 +41,7 @@ Parameters:
     Description: Ingresa el rango de IP para la subred privada en la segunda zona de disponibilidad
     Type: String
     Default: 10.192.21.0/24
-    
+
   PrivateSubnet3CIDR:
     Description: Ingresa el rango de IP para la subred privada en la tercera zona de disponibilidad
     Type: String
@@ -89,7 +90,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      AvailabilityZone: !Select [0, !GetAZs ""]
       CidrBlock: !Ref PublicSubnet1CIDR
       MapPublicIpOnLaunch: true
       Tags:
@@ -100,7 +101,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      AvailabilityZone: !Select [1, !GetAZs ""]
       CidrBlock: !Ref PublicSubnet2CIDR
       MapPublicIpOnLaunch: true
       Tags:
@@ -111,7 +112,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      AvailabilityZone: !Select [1, !GetAZs ""]
       CidrBlock: !Ref PublicSubnet3CIDR
       MapPublicIpOnLaunch: true
       Tags:
@@ -122,7 +123,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      AvailabilityZone: !Select [0, !GetAZs ""]
       CidrBlock: !Ref PrivateSubnet1CIDR
       MapPublicIpOnLaunch: false
       Tags:
@@ -133,18 +134,18 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      AvailabilityZone: !Select [1, !GetAZs ""]
       CidrBlock: !Ref PrivateSubnet2CIDR
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-PrivateSubnet2
-  
+
   PrivateSubnet3:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      AvailabilityZone: !Select [1, !GetAZs ""]
       CidrBlock: !Ref PrivateSubnet3CIDR
       MapPublicIpOnLaunch: false
       Tags:
@@ -162,7 +163,7 @@ Resources:
     DependsOn: InternetGatewayAttachment
     Properties:
       Domain: vpc
-  
+
   # Tener en cuenta que la EIP se cobrara por no estar asociada a ninguna instancia
   NatGateway3EIP:
     Type: AWS::EC2::EIP
@@ -181,7 +182,7 @@ Resources:
     Properties:
       AllocationId: !GetAtt NatGateway2EIP.AllocationId
       SubnetId: !Ref PublicSubnet2
-  
+
   NatGateway3:
     Type: AWS::EC2::NatGateway
     Properties:
@@ -215,13 +216,12 @@ Resources:
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet2
-  
+
   PublicSubnet3RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet3
-
 
   PrivateRouteTable1:
     Type: AWS::EC2::RouteTable
@@ -302,6 +302,29 @@ Resources:
           ToPort: 80
           SourceSecurityGroupId: !Ref ELBSecurityGroup
 
+  EC2SecurityGroup2:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SSH and Port 943"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 943
+          ToPort: 943
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: 1194
+          ToPort: 1194
+          CidrIp: 0.0.0.0/0
+
   # ELB Security Group allowing Port 80 from anywhere
   ELBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -325,6 +348,9 @@ Resources:
       ImageId: !Ref customAMI
       KeyName: !Ref SSHKeyName
       InstanceType: t2.micro
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-CustomInstance1
       # SecurityGroupIds:
       #   - !Ref EC2SecurityGroup
       # DependsOn: VPC
@@ -346,6 +372,9 @@ Resources:
       ImageId: !Ref customAMI
       KeyName: !Ref SSHKeyName
       InstanceType: t2.micro
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-CustomInstance2
       # SecurityGroupIds:
       #   - !Ref EC2SecurityGroup
       # DependsOn: VPC
@@ -354,8 +383,15 @@ Resources:
           DeleteOnTermination: true
           DeviceIndex: "0"
           GroupSet:
-            - !Ref EC2SecurityGroup
+            - !Ref EC2SecurityGroup2
           SubnetId: !Ref PublicSubnet2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          sudo su
+          yum update -y
+          yum -y install https://as-repository.openvpn.net/as-repo-centos7.rpm
+          yum -y install openvpn-as
 
   # Target Group
   EC2TargetGroup:
@@ -411,11 +447,16 @@ Outputs:
 
   PublicSubnets:
     Description: Lista de las subredes publicas
-    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 , !Ref PublicSubnet3]]
+    Value:
+      !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
 
   PrivateSubnets:
     Description: Lista de las subredes privadas
-    Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2,!Ref PrivateSubnet3 ]]
+    Value:
+      !Join [
+        ",",
+        [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3],
+      ]
 
   PublicSubnet1:
     Description: Subred publica en 1era zona de disponibilidad
@@ -424,7 +465,7 @@ Outputs:
   PublicSubnet2:
     Description: Subred publica en 2da zona de disponibilidad
     Value: !Ref PublicSubnet2
-  
+
   PublicSubnet3:
     Description: Subred publica en 2da zona de disponibilidad
     Value: !Ref PublicSubnet3
@@ -436,7 +477,7 @@ Outputs:
   PrivateSubnet2:
     Description: Subred privada en 2da zona de disponibilidad
     Value: !Ref PrivateSubnet2
-  
+
   PrivateSubnet3:
     Description: Subred privada en 2da zona de disponibilidad
     Value: !Ref PrivateSubnet3
@@ -458,9 +499,9 @@ Outputs:
     Value: !Ref CustomInstance2
 
   EC2TargetGroup:
-    Description: 'EC2 Grupo'
+    Description: "EC2 Grupo"
     Value: !Ref EC2TargetGroup
 
   ApplicationLoadBalancer:
-    Description: 'Aplicacion Load Balancer'
+    Description: "Aplicacion Load Balancer"
     Value: !Ref ApplicationLoadBalancer
